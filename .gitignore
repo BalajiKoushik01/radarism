@@ -1,0 +1,7 @@
+build/
+*.bak
+*.o
+*.rpm
+.vscode/
+.idea/
+*.swp

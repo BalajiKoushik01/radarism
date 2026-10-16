@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=RadarSim
+Comment=Baseband radar signal generation, propagation and DSP simulator
+Exec=radarsim_gui
+Icon=radarsim
+Terminal=false
+Categories=Science;Engineering;Qt;
