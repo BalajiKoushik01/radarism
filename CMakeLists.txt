@@ -41,13 +41,16 @@ install(TARGETS radar_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_executable(radar_cpi apps/radar_cpi.cpp)   # CPI / range-Doppler command-line tool (not installed)
 target_link_libraries(radar_cpi PRIVATE radar_core)
 
+add_executable(radar_awg apps/radar_awg.cpp)   # AWG / SDR playback-file tool
+target_link_libraries(radar_awg PRIVATE radar_core)
+
 add_executable(radar_mc apps/radar_mc.cpp)   # Monte Carlo Pd/Pfa validation tool (not installed)
 target_link_libraries(radar_mc PRIVATE radar_core)
 
 if(RADARSIM_BUILD_TESTS)
   find_package(GTest REQUIRED)
   enable_testing()
-  foreach(t smoke waveforms spectral channel detection pipeline pyramid passband refine cpi montecarlo cfar_neff)
+  foreach(t smoke waveforms spectral channel detection pipeline pyramid passband refine cpi montecarlo cfar_neff awg)
     add_executable(test_${t} tests/test_${t}.cpp)
     target_link_libraries(test_${t} PRIVATE radar_export GTest::gtest_main)
     add_test(NAME ${t} COMMAND test_${t})
