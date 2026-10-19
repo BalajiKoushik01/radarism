@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           radarsim
-Version:        0.1.0
+Version:        0.3.0
 Release:        1%{?dist}
 Summary:        Baseband radar signal generation, propagation and DSP simulator
 License:        Proprietary
@@ -38,11 +38,15 @@ DESTDIR=%{buildroot} cmake --install build
 desktop-file-validate %{buildroot}%{_datadir}/applications/radarsim.desktop
 
 %files
-%{_bindir}/radarsim_gui
-%{_bindir}/radar_cli
+%{_bindir}/radar*
 %{_datadir}/applications/radarsim.desktop
 %{_datadir}/icons/hicolor/scalable/apps/radarsim.svg
 
 %changelog
+* Mon Oct 19 2026 Balaji Koushik - 0.3.0-1
+- CPI / range-Doppler mode and heatmap, matched-filter weighting, sub-bin range refinement
+- Instrument-style plots, Monte Carlo Pd/Pfa validation, correlation-aware CFAR, AWG/SDR export profile
+- Installs the command-line tools (radar_cli, radar_cpi, radar_mc, radar_awg)
+
 * Tue Oct 13 2026 Balaji Koushik - 0.1.0-1
 - Initial package
