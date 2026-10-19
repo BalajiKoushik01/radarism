@@ -22,11 +22,12 @@ else()
   set(RADAR_VOLK_TARGET PkgConfig::VOLK)
 endif()
 find_package(HDF5 REQUIRED COMPONENTS C)
+find_package(Threads REQUIRED)
 
 # Header-only, Qt-free core
 add_library(radar_core INTERFACE)
 target_include_directories(radar_core INTERFACE ${CMAKE_SOURCE_DIR}/core/include)
-target_link_libraries(radar_core INTERFACE PkgConfig::FFTW3F ${RADAR_VOLK_TARGET})
+target_link_libraries(radar_core INTERFACE PkgConfig::FFTW3F ${RADAR_VOLK_TARGET} Threads::Threads)
 target_compile_options(radar_core INTERFACE -Wall -Wextra -Wpedantic)
 
 # Core + exporters (HDF5)
@@ -40,10 +41,13 @@ install(TARGETS radar_cli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 add_executable(radar_cpi apps/radar_cpi.cpp)   # CPI / range-Doppler command-line tool (not installed)
 target_link_libraries(radar_cpi PRIVATE radar_core)
 
+add_executable(radar_mc apps/radar_mc.cpp)   # Monte Carlo Pd/Pfa validation tool (not installed)
+target_link_libraries(radar_mc PRIVATE radar_core)
+
 if(RADARSIM_BUILD_TESTS)
   find_package(GTest REQUIRED)
   enable_testing()
-  foreach(t smoke waveforms spectral channel detection pipeline pyramid passband refine cpi)
+  foreach(t smoke waveforms spectral channel detection pipeline pyramid passband refine cpi montecarlo)
     add_executable(test_${t} tests/test_${t}.cpp)
     target_link_libraries(test_${t} PRIVATE radar_export GTest::gtest_main)
     add_test(NAME ${t} COMMAND test_${t})
