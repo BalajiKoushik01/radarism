@@ -11,7 +11,7 @@ static void usage() {
         "radar_mc [key=value ...]   Monte Carlo Pd / Pfa validation against Marcum-Q and Albersheim\n"
         "\n"
         "Waveform : type=pulse|lfm|barker|frank  fs=1e6  pri=10e-3  tau=500e-6  bw=2e5  code=13  mfw=none|hamming|hann\n"
-        "Detector : pfa=1e-3  guard=20  train=64  tol=2 (bins)\n"
+        "Detector : pfa=1e-3  guard=20  train=64  tol=2 (bins)  corr=off|on (correlation-aware CFAR threshold)\n"
         "Sweep    : snr_lo= snr_hi= snr_step=1   (matched-filter OUTPUT SNR in dB; default = Albersheim(0.9) -4 .. +4)\n"
         "Monte    : trials=400 (per point)  ntrials=200 (noise-only runs)  bin=0 (0 = 30% of PRI)  threads=0 (all)  seed=12345\n"
         "\n"
@@ -46,6 +46,7 @@ int main(int argc, char** argv) {
         else if (mfw == "hann") p.mf_weighting = MfWeighting::Hann;
         else if (mfw != "none") throw std::invalid_argument("mfw must be none, hamming or hann");
         p.cfar.guard_cells = static_cast<int>(a.num("guard", 20));
+        p.cfar_correlation_aware = (a.str("corr", "off") == "on");
         p.cfar.train_cells = static_cast<int>(a.num("train", 64));
         mp.pfa = a.num("pfa", 1e-3);
         mp.trials = static_cast<int>(a.num("trials", 400));
@@ -80,6 +81,9 @@ int main(int argc, char** argv) {
                     f.alpha, 2 * p.cfar.train_cells, f.pfa_cfar, f.pfa_cfar / f.pfa_design, f.clusters_per_run,
                     f.expected_cfar_loss_db);
 
+        std::printf("  CFAR training cells: effective %.1f of %d (%s)\n\n",
+                    f.effective_cells > 0.0 ? f.effective_cells : 2.0 * p.cfar.train_cells, 2 * p.cfar.train_cells,
+                    p.cfar_correlation_aware ? "correlation-aware threshold" : "independence assumed");
         std::printf("SNR_out(dB)  SNR_in(dB)  Pd theory   Pd fixed-threshold [95%% CI]    Pd CA-CFAR [95%% CI]\n");
         int inside = 0;
         for (const auto& pt : r.curve) {

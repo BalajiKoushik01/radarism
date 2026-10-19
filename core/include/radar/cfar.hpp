@@ -11,6 +11,7 @@ struct CfarParams {
     int guard_cells = 20;   // each side; use >= compressed mainlobe width (in samples)
     int train_cells = 64;   // each side
     double pfa = 1e-6;
+    double effective_cells = 0.0;   // independent-cell equivalent of the 2*train cells (0 = assume independent)
 };
 
 struct CfarResult {
@@ -30,7 +31,7 @@ inline std::string validate_cfar(const CfarParams& p, std::size_t n) {
 }
 
 // Square-law detector, exponential (Gaussian-noise) power statistics.
-inline double cfar_alpha(int n_train_total, double pfa) {
+inline double cfar_alpha(double n_train_total, double pfa) {
     const double n = static_cast<double>(n_train_total);
     return n * (std::pow(pfa, -1.0 / n) - 1.0);
 }
@@ -57,7 +58,7 @@ inline CfarResult ca_cfar(const RBuffer& power, const CfarParams& p) {
 
     const long long g = p.guard_cells, t = p.train_cells;
     CfarResult r;
-    r.alpha = cfar_alpha(static_cast<int>(2 * t), p.pfa);
+    r.alpha = cfar_alpha(p.effective_cells > 0.0 ? p.effective_cells : static_cast<double>(2 * t), p.pfa);
     r.threshold.resize(static_cast<std::size_t>(n));
 
     std::vector<char> hit(static_cast<std::size_t>(n), 0);

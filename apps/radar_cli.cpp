@@ -62,6 +62,7 @@ static void usage() {
         "Phase nse: pn=on|off  pnfloor=-140  pncorner=1000  pnflicker=100  pnseed=1\n"
         "CFAR     : detect=on|off  pfa=1e-6  guard=20  train=64\n"
         "MF weight: mfw=none|hamming|hann\n"
+        "CFAR corr: corr=on|off  (on = threshold sized for correlated oversampled noise; default on)\n"
         "Export   : out=PREFIX  fmt=float|int16  csv=on|off\n"
         "           writes PREFIX.h5, PREFIX_tx.bin(+.json), PREFIX_rx.bin(+.json), PREFIX_rx.csv (if N<=100000)\n"
         "\n"
@@ -113,6 +114,7 @@ int main(int argc, char** argv) {
         p.pn.seed = static_cast<std::uint64_t>(a.num("pnseed", 1));
 
         p.run_detection = a.flag("detect", true);
+        p.cfar_correlation_aware = (a.str("corr", "on") != "off");
         const std::string mfw = a.str("mfw", "none");
         if (mfw == "hamming") p.mf_weighting = MfWeighting::Hamming;
         else if (mfw == "hann") p.mf_weighting = MfWeighting::Hann;

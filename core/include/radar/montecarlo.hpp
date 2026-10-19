@@ -126,7 +126,7 @@ struct McPfa {
     int runs = 0;
     std::size_t cells = 0, over_fixed = 0, over_cfar = 0, clusters = 0;
     double pfa_design = 0.0, pfa_fixed = 0.0, pfa_cfar = 0.0, clusters_per_run = 0.0;
-    double alpha = 0.0, expected_cfar_loss_db = 0.0;
+    double alpha = 0.0, expected_cfar_loss_db = 0.0, effective_cells = 0.0;
 };
 
 struct McResult {
@@ -184,7 +184,8 @@ inline McResult run_monte_carlo(const McParams& mp, std::vector<double> snr_out_
     res.threads = mp.threads ? mp.threads : std::max(1u, std::thread::hardware_concurrency());
     const double T = -std::log(mp.pfa);   // fixed threshold in units of the matched-filter noise floor
 
-    (void)simulate(base);   // warm-up on one thread: initializes VOLK dispatch before the pool starts
+    const ResultPtr warm = simulate(base);   // warm-up on one thread (initializes VOLK dispatch) and CFAR readout
+    const double warm_alpha = warm->cfar.alpha, warm_neff = warm->cfar_effective_cells;
 
     const std::size_t P = snr_out_db.size(), trials = static_cast<std::size_t>(mp.trials);
     std::vector<std::atomic<int>> hf(P), hc(P);
@@ -241,7 +242,8 @@ inline McResult run_monte_carlo(const McParams& mp, std::vector<double> snr_out_
     f.pfa_fixed = static_cast<double>(f.over_fixed) / static_cast<double>(f.cells);
     f.pfa_cfar = static_cast<double>(f.over_cfar) / static_cast<double>(f.cells);
     f.clusters_per_run = static_cast<double>(f.clusters) / mp.noise_trials;
-    f.alpha = cfar_alpha(2 * base.cfar.train_cells, mp.pfa);
+    f.alpha = warm_alpha;
+    f.effective_cells = warm_neff;
     f.expected_cfar_loss_db = 10.0 * std::log10(f.alpha / T);
 
     res.theory_snr90 = theory_snr_for_pd(0.9, mp.pfa);

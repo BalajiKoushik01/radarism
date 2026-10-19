@@ -321,6 +321,7 @@ radar::SimulationParams MainWindow::buildParams() const {
     p.cfar.guard_cells = guard_->value();
     p.cfar.train_cells = train_->value();
     p.run_detection = (p.wf.type != WaveformType::CW);
+    p.cfar_correlation_aware = true;   // threshold sized for the matched filter's correlated noise
     p.mf_weighting = (mfWin_->currentIndex() == 1)   ? radar::MfWeighting::Hamming
                      : (mfWin_->currentIndex() == 2) ? radar::MfWeighting::Hann
                                                      : radar::MfWeighting::None;

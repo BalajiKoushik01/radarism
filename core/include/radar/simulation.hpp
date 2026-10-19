@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include "radar/cfar.hpp"
+#include "radar/cfar_neff.hpp"
 #include "radar/channel.hpp"
 #include "radar/matched_filter.hpp"
 #include "radar/peak_interp.hpp"
@@ -21,6 +22,7 @@ struct SimulationParams {
     CfarParams cfar;
     bool run_detection = true;
     MfWeighting mf_weighting = MfWeighting::None;   // taper on the receive replica
+    bool cfar_correlation_aware = false;            // size the CFAR threshold for correlated (oversampled) noise
 };
 
 struct SimulationResult {
@@ -35,6 +37,7 @@ struct SimulationResult {
     CfarResult cfar;
     std::vector<double> detection_range_m;   // from the refined (sub-bin) peak position
     std::vector<double> detection_bin;       // refined peak position in bins
+    double cfar_effective_cells = 0.0;       // independent-cell equivalent of the CFAR training window (0 = assumed iid)
     double mf_noise_floor_w = 0.0;           // noise floor of mf_power; the echo peak equals Pr
 };
 
@@ -93,6 +96,7 @@ inline ResultPtr simulate(const SimulationParams& p, const std::atomic<bool>* ca
     check();
 
     if (p.wf.type != WaveformType::CW) {
+        double neff = 0.0;
         {
             const CBuffer h = weighted_replica(res->tx, res->n_pulse, p.mf_weighting);   // clean (tapered) replica
             double coherent = 0.0, eh = 0.0;
@@ -104,11 +108,19 @@ inline ResultPtr simulate(const SimulationParams& p, const std::atomic<bool>* ca
             res->mf_power = magnitude_squared(y);
             res->mf_noise_floor_w = res->report.pn_w * eh / (coherent * coherent);
             res->report.mf_gain_db = lin_to_db(coherent * coherent / eh);
+            if (p.run_detection && p.cfar_correlation_aware) {
+                const auto c = noise_correlation_power(h, res->n_pulse,
+                                                       static_cast<std::size_t>(2 * (p.cfar.guard_cells + p.cfar.train_cells)));
+                neff = cfar_effective_cells(c, p.cfar.guard_cells, p.cfar.train_cells);
+            }
         }
         res->has_range_profile = true;
         check();
         if (p.run_detection) {
-            res->cfar = ca_cfar(res->mf_power, p.cfar);
+            CfarParams cp = p.cfar;
+            cp.effective_cells = neff;
+            res->cfar_effective_cells = neff;
+            res->cfar = ca_cfar(res->mf_power, cp);
             const double nbins = static_cast<double>(res->mf_power.size());
             for (auto d : res->cfar.detections) {
                 const double b = std::fmod(static_cast<double>(d) + peak_offset(res->mf_power, d) + nbins, nbins);
