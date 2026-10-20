@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include "cli_extras.hpp"
 #include "radar/cpi.hpp"
 
 using namespace radar;
@@ -55,6 +56,7 @@ static void usage() {
         "Channel  : fc=10e9  range=30000  vel=3.7474  nf=3  seed=12345   (vel > 0 = closing)\n"
         "SNR      : mode=manual|physical   snr=-10   pt=1000 gt=30 gr=30 rcs=1 loss=0\n"
         "MF       : mfw=none|hamming|hann\n"
+        "Phase 2  : adc= adcfs= iqgain= iqphase= dci= dcq=   t2=R_m,V_mps,dB (also t3, t4)\n"
         "CPI      : pulses=64  gate=256  dfft=0 (0 = next power of two)  win=hann|hamming|rect\n"
         "CFAR 2D  : detect=on|off  pfa=1e-6  grange=10  gdop=2  trange=20  tdop=4");
 }
@@ -94,6 +96,7 @@ int main(int argc, char** argv) {
         p.ch.gr_db = a.num("gr", 30.0);
         p.ch.rcs_m2 = a.num("rcs", 1.0);
         p.ch.loss_db = a.num("loss", 0.0);
+        parse_extras(a, p);
         const std::string mfw = a.str("mfw", "none");
         if (mfw == "hamming") p.mf_weighting = MfWeighting::Hamming;
         else if (mfw == "hann") p.mf_weighting = MfWeighting::Hann;
