@@ -1,7 +1,7 @@
 %global debug_package %{nil}
 
 Name:           radarsim
-Version:        0.3.0
+Version:        0.4.0
 Release:        1%{?dist}
 Summary:        Baseband radar signal generation, propagation and DSP simulator
 License:        Proprietary
@@ -43,6 +43,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/radarsim.desktop
 %{_datadir}/icons/hicolor/scalable/apps/radarsim.svg
 
 %changelog
+* Tue Oct 20 2026 Balaji Koushik - 0.4.0-1
+- Receiver impairments, additional targets, CPI refinement and HDF5 export, presets
+- Monte Carlo panel, optional multi-threaded FFTW, radar_bench
+
 * Mon Oct 19 2026 Balaji Koushik - 0.3.0-1
 - CPI / range-Doppler mode and heatmap, matched-filter weighting, sub-bin range refinement
 - Instrument-style plots, Monte Carlo Pd/Pfa validation, correlation-aware CFAR, AWG/SDR export profile

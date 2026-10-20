@@ -70,3 +70,12 @@ Built for Rocky Linux 9 (GCC 11.5, C++20, CMake >= 3.25, Qt 6.6).
     git add -A && git commit -m "checkpoint before step N"   # before applying any patch
     git diff --stat                                          # what a patch changed
     git restore .                                            # undo a bad patch
+
+## Phase 2 features
+- Receiver impairments: ADC resolution/full scale/clipping, I/Q gain and phase imbalance, DC offset
+  (GUI group "Receiver impairments and noise seed"; CLI: adc= adcfs= iqgain= iqphase= dci= dcq=)
+- Additional targets in single-pulse and CPI modes (GUI "Additional targets"; CLI: t2=R_m,V_mps,dB, also t3, t4)
+- CPI detections carry sub-cell range and Doppler estimates; the range-Doppler map exports to HDF5 from the CPI page
+- Presets: every setup parameter saved/loaded as flat JSON; the noise seed is part of the preset
+- "Validate Pd (Monte Carlo)": plots theory against measured Pd for the current waveform and detector
+- Optional multi-threaded FFTW: set RADAR_FFT_THREADS=N (needs libfftw3f_threads); ./build/radar_bench measures it
