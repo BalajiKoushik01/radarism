@@ -3,6 +3,7 @@
 #include <QSurfaceFormat>
 #include "MainWindow.h"
 #include "CpiData.h"
+#include "McData.h"
 #include "PlotData.h"
 
 int main(int argc, char** argv) {
@@ -19,6 +20,9 @@ int main(int argc, char** argv) {
     qRegisterMetaType<ExportRequest>("ExportRequest");
     qRegisterMetaType<CpiRequest>("CpiRequest");
     qRegisterMetaType<radar::CpiResultPtr>("radar::CpiResultPtr");
+    qRegisterMetaType<McRequest>("McRequest");
+    qRegisterMetaType<CpiExportRequest>("CpiExportRequest");
+    qRegisterMetaType<McResultPtr>("McResultPtr");
 
     MainWindow w;
     w.resize(1400, 1050);

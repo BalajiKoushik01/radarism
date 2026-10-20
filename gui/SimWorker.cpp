@@ -99,3 +99,24 @@ void SimWorker::runCpi(const CpiRequest& rq) {
         emit failed(QString::fromUtf8(e.what()));
     }
 }
+
+void SimWorker::runMc(const McRequest& rq) {
+    cancel_.store(false);
+    try {
+        auto res = std::make_shared<const radar::McResult>(radar::run_monte_carlo(rq.mc, rq.snr_out_db, &cancel_));
+        emit mcFinished(res);
+    } catch (const radar::Cancelled&) {
+        emit failed("Cancelled.");
+    } catch (const std::exception& e) {
+        emit failed(QString::fromUtf8(e.what()));
+    }
+}
+
+void SimWorker::exportCpi(const CpiExportRequest& rq) {
+    try {
+        radar::write_hdf5_cpi(rq.path.toStdString(), *rq.result);
+        emit exportDone(rq.path + " (rd_power, detections and metadata)");
+    } catch (const std::exception& e) {
+        emit exportFailed(QString::fromUtf8(e.what()));
+    }
+}

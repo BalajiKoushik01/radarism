@@ -2,9 +2,13 @@
 #include <QElapsedTimer>
 #include <QMainWindow>
 #include "CpiData.h"
+#include "McData.h"
+#include "radar/preset.hpp"
 #include "PlotData.h"
 
+class QCheckBox;
 class QComboBox;
+class QPlainTextEdit;
 class QDoubleSpinBox;
 class QFormLayout;
 class QGroupBox;
@@ -28,6 +32,8 @@ signals:
     void requestRun(const RunRequest& rq);
     void requestExport(const ExportRequest& rq);
     void requestCpi(const CpiRequest& rq);
+    void requestMc(const McRequest& rq);
+    void requestCpiExport(const CpiExportRequest& rq);
 
 private slots:
     void onGenerate();
@@ -39,6 +45,11 @@ private slots:
     void onCpiProgress(int done, int total);
     void onCpiFinished(radar::CpiResultPtr r);
     void onCellSelected(int row, int col);
+    void onSavePreset();
+    void onLoadPreset();
+    void onCpiExport();
+    void onMonteCarlo();
+    void onMcFinished(McResultPtr r);
 
 private:
     QWidget* buildSetupPage();
@@ -59,6 +70,11 @@ private:
     void resetPassbandView();
     void updateExportOptions();
     void updateCuts(int row, int col);
+    void buildExtraControls();
+    void fillExtras(radar::SimulationParams& p) const;
+    radar::Preset currentPreset() const;
+    void applyPreset(const radar::Preset& pr);
+    QWidget* buildMcPage();
 
     QStackedWidget* stack_ = nullptr;
     QComboBox *type_ = nullptr, *code_ = nullptr, *dynamics_ = nullptr, *snrMode_ = nullptr;
@@ -90,6 +106,15 @@ private:
     RdPlot* rd_ = nullptr;
     SeriesPlot *rdRangeCut_ = nullptr, *rdDopCut_ = nullptr;
     radar::CpiResultPtr cpi_;
+    QSpinBox *seed_ = nullptr, *adcBits_ = nullptr;
+    QDoubleSpinBox *adcFs_ = nullptr, *iqGain_ = nullptr, *iqPhase_ = nullptr, *dcI_ = nullptr, *dcQ_ = nullptr;
+    QCheckBox* tgtOn_[3] = {};
+    QDoubleSpinBox *tgtRange_[3] = {}, *tgtVel_[3] = {}, *tgtRel_[3] = {};
+    QWidget* extrasRow_ = nullptr;
+    QPushButton *savePreset_ = nullptr, *loadPreset_ = nullptr, *mcBtn_ = nullptr, *mcBack_ = nullptr, *cpiExport_ = nullptr;
+    QLabel* mcStatus_ = nullptr;
+    SeriesPlot* mcPlot_ = nullptr;
+    QPlainTextEdit* mcText_ = nullptr;
 
     QThread* thread_ = nullptr;
     SimWorker* worker_ = nullptr;

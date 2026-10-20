@@ -1,5 +1,8 @@
 #include "MainWindow.h"
+#include <QCheckBox>
 #include <QComboBox>
+#include <QFontDatabase>
+#include <QPlainTextEdit>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
@@ -51,6 +54,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     stack_->addWidget(buildSetupPage());
     stack_->addWidget(buildDashboardPage());
     stack_->addWidget(buildCpiPage());
+    stack_->addWidget(buildMcPage());
     setCentralWidget(stack_);
 
     thread_ = new QThread(this);
@@ -66,6 +70,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(this, &MainWindow::requestCpi, worker_, &SimWorker::runCpi);
     connect(worker_, &SimWorker::cpiFinished, this, &MainWindow::onCpiFinished);
     connect(worker_, &SimWorker::cpiProgress, this, &MainWindow::onCpiProgress);
+    connect(this, &MainWindow::requestMc, worker_, &SimWorker::runMc);
+    connect(worker_, &SimWorker::mcFinished, this, &MainWindow::onMcFinished);
+    connect(this, &MainWindow::requestCpiExport, worker_, &SimWorker::exportCpi);
     thread_->start();
 
     updateForm();
@@ -121,6 +128,7 @@ QWidget* MainWindow::buildSetupPage() {
     guard_ = ispin(0, 2000, 20);
     train_ = ispin(4, 5000, 64);
     buildCpiControls();
+    buildExtraControls();
 
     auto* signalBox = new QGroupBox("Signal and Baseband Architecture");
     signalForm_ = new QFormLayout(signalBox);
@@ -184,11 +192,15 @@ QWidget* MainWindow::buildSetupPage() {
     auto* buttons = new QHBoxLayout;
     buttons->addWidget(generate_, 3);
     buttons->addWidget(cancel_, 1);
+    buttons->addWidget(savePreset_);
+    buttons->addWidget(loadPreset_);
+    buttons->addWidget(mcBtn_);
 
     auto* page = new QWidget;
     auto* root = new QVBoxLayout(page);
     root->addLayout(cols);
     root->addWidget(cpiBox_);
+    root->addWidget(extrasRow_);
     root->addWidget(validation_);
     root->addWidget(info_);
     root->addLayout(buttons);
@@ -202,6 +214,8 @@ QWidget* MainWindow::buildSetupPage() {
         connect(w, &QSpinBox::valueChanged, this, [this](int) { updateForm(); });
     for (auto* w : page->findChildren<QComboBox*>())
         connect(w, &QComboBox::currentIndexChanged, this, [this](int) { updateForm(); });
+    for (auto* w : page->findChildren<QCheckBox*>())
+        connect(w, &QCheckBox::toggled, this, [this](bool) { updateForm(); });
     connect(generate_, &QPushButton::clicked, this, &MainWindow::onGenerate);
     connect(cancel_, &QPushButton::clicked, this, [this] { worker_->cancel(); });
     return page;
@@ -321,6 +335,7 @@ radar::SimulationParams MainWindow::buildParams() const {
     p.cfar.guard_cells = guard_->value();
     p.cfar.train_cells = train_->value();
     p.run_detection = (p.wf.type != WaveformType::CW);
+    fillExtras(p);
     p.cfar_correlation_aware = true;   // threshold sized for the matched filter's correlated noise
     p.mf_weighting = (mfWin_->currentIndex() == 1)   ? radar::MfWeighting::Hamming
                      : (mfWin_->currentIndex() == 2) ? radar::MfWeighting::Hann
@@ -608,6 +623,8 @@ void MainWindow::onExportDone(const QString& message) {
     generate_->setEnabled(valid_);
     export_->setEnabled(data_ != nullptr);
     status_->setText(runSummary_ + "\nExported: " + message);
+    cpiStatus_->setText("Exported: " + message);
+    cpiExport_->setEnabled(cpi_ != nullptr);
 }
 
 void MainWindow::onExportFailed(const QString& message) {
@@ -615,6 +632,8 @@ void MainWindow::onExportFailed(const QString& message) {
     generate_->setEnabled(valid_);
     export_->setEnabled(data_ != nullptr);
     status_->setText(runSummary_ + "\nExport failed: " + message);
+    cpiStatus_->setText("Export failed: " + message);
+    cpiExport_->setEnabled(cpi_ != nullptr);
 }
 
 void MainWindow::buildCpiControls() {
@@ -705,6 +724,7 @@ QWidget* MainWindow::buildCpiPage() {
     cpiStatus_ = new QLabel("No CPI data yet.");
     cpiStatus_->setWordWrap(true);
     rdRangeDb_ = spin(10.0, 120.0, 45.0, 0, " dB");
+    cpiExport_ = new QPushButton("Export RD map (HDF5)…");
     rdInfo_ = new QLabel;
     rd_ = new RdPlot;
     rdRangeCut_ = new SeriesPlot;
@@ -715,6 +735,7 @@ QWidget* MainWindow::buildCpiPage() {
     top->addWidget(cpiStatus_, 1);
     top->addWidget(new QLabel("Colour range"));
     top->addWidget(rdRangeDb_);
+    top->addWidget(cpiExport_);
     auto* cuts = new QHBoxLayout;
     cuts->addWidget(rdRangeCut_);
     cuts->addWidget(rdDopCut_);
@@ -727,6 +748,7 @@ QWidget* MainWindow::buildCpiPage() {
     root->addLayout(cuts, 2);
 
     connect(cpiBack_, &QPushButton::clicked, this, [this] { stack_->setCurrentIndex(0); });
+    connect(cpiExport_, &QPushButton::clicked, this, &MainWindow::onCpiExport);
     connect(rdRangeDb_, &QDoubleSpinBox::valueChanged, this, [this](double v) { rd_->setColourRange(v); });
     connect(rd_, &RdPlot::cellSelected, this, &MainWindow::onCellSelected);
     connect(rd_, &RdPlot::cursorInfo, this, [this](const QString& s) { rdInfo_->setText(s); });
@@ -750,8 +772,8 @@ void MainWindow::onCpiFinished(radar::CpiResultPtr r) {
         s += QString("%1 detection(s): ").arg(r->detections.size());
         for (std::size_t i = 0; i < r->detections.size() && i < 3; ++i) {
             const auto& d = r->detections[i];
-            s += QString("#%1 %2 m/s @ %3 km (%4 dB)  ").arg(i + 1).arg(d.velocity_mps, 0, 'f', 2)
-                     .arg(d.range_m / 1e3, 0, 'f', 3).arg(d.snr_db, 0, 'f', 1);
+            s += QString("#%1 %2 m/s @ %3 km (%4 dB)  ").arg(i + 1).arg(d.velocity_refined_mps, 0, 'f', 3)
+                     .arg(d.range_refined_m / 1e3, 0, 'f', 4).arg(d.snr_db, 0, 'f', 1);
         }
     }
     cpiStatus_->setText(s);
@@ -813,4 +835,274 @@ void MainWindow::updateCuts(int row, int col) {
                            "Range (km)", "dB re RD noise floor");
     rdDopCut_->setSeries(h, std::move(t2), -static_cast<double>(L / 2) * dv, dv, 1.0,
                          "Velocity (m/s)", "dB re RD noise floor");
+}
+
+
+// ---------------- Phase 2: impairments, extra targets, seed, presets, Monte Carlo ----------------
+
+void MainWindow::buildExtraControls() {
+    seed_ = ispin(0, 2147483647, 12345);
+    adcBits_ = ispin(0, 16, 0);
+    adcBits_->setSpecialValueText("off");
+    adcFs_ = spin(0.0, 1000.0, 0.0, 2, " σ");
+    adcFs_->setSpecialValueText("auto");
+    iqGain_ = spin(-20.0, 20.0, 0.0, 2, " dB");
+    iqPhase_ = spin(-45.0, 45.0, 0.0, 2, "°");
+    dcI_ = spin(-100.0, 100.0, 0.0, 2, " σ");
+    dcQ_ = spin(-100.0, 100.0, 0.0, 2, " σ");
+    auto* impBox = new QGroupBox("Receiver impairments and noise seed");
+    auto* f = new QFormLayout(impBox);
+    f->addRow("Noise seed", seed_);
+    f->addRow("ADC resolution", adcBits_);
+    f->addRow("ADC full scale", adcFs_);
+    f->addRow("I/Q gain imbalance", iqGain_);
+    f->addRow("I/Q phase error", iqPhase_);
+    f->addRow("DC offset I", dcI_);
+    f->addRow("DC offset Q", dcQ_);
+
+    auto* tgtBox = new QGroupBox("Additional targets: range / velocity / level re target 1");
+    auto* g = new QGridLayout(tgtBox);
+    for (int i = 0; i < 3; ++i) {
+        tgtOn_[i] = new QCheckBox(QString("Target %1").arg(i + 2));
+        tgtRange_[i] = spin(0.1, 5000.0, 160.0 + 10.0 * i, 3, " km");
+        tgtVel_[i] = spin(-5000.0, 5000.0, 0.0, 2, " m/s");
+        tgtRel_[i] = spin(-60.0, 40.0, -3.0, 1, " dB");
+        g->addWidget(tgtOn_[i], i, 0);
+        g->addWidget(tgtRange_[i], i, 1);
+        g->addWidget(tgtVel_[i], i, 2);
+        g->addWidget(tgtRel_[i], i, 3);
+    }
+    extrasRow_ = new QWidget;
+    auto* h = new QHBoxLayout(extrasRow_);
+    h->setContentsMargins(0, 0, 0, 0);
+    h->addWidget(impBox, 1, Qt::AlignTop);
+    h->addWidget(tgtBox, 1, Qt::AlignTop);
+
+    savePreset_ = new QPushButton("Save preset…");
+    loadPreset_ = new QPushButton("Load preset…");
+    mcBtn_ = new QPushButton("Validate Pd (Monte Carlo)");
+    for (auto* bt : {savePreset_, loadPreset_, mcBtn_}) bt->setMinimumHeight(40);
+    connect(savePreset_, &QPushButton::clicked, this, &MainWindow::onSavePreset);
+    connect(loadPreset_, &QPushButton::clicked, this, &MainWindow::onLoadPreset);
+    connect(mcBtn_, &QPushButton::clicked, this, &MainWindow::onMonteCarlo);
+}
+
+void MainWindow::fillExtras(radar::SimulationParams& p) const {
+    p.ch.seed = static_cast<std::uint64_t>(seed_->value());
+    p.rx_imp.adc_bits = adcBits_->value();
+    p.rx_imp.adc_fs_sigma = adcFs_->value();
+    p.rx_imp.iq_gain_db = iqGain_->value();
+    p.rx_imp.iq_phase_deg = iqPhase_->value();
+    p.rx_imp.dc_i_sigma = dcI_->value();
+    p.rx_imp.dc_q_sigma = dcQ_->value();
+    p.extra_targets.clear();
+    for (int i = 0; i < 3; ++i) {
+        if (!tgtOn_[i]->isChecked()) continue;
+        radar::TargetSpec t;
+        t.range_m = tgtRange_[i]->value() * 1e3;
+        t.velocity_mps = tgtVel_[i]->value();
+        t.rel_db = tgtRel_[i]->value();
+        p.extra_targets.push_back(t);
+    }
+}
+
+radar::Preset MainWindow::currentPreset() const {
+    radar::Preset pr;
+    pr.sim = buildParams();
+    pr.cpi = buildCpiParams();
+    pr.cpi_mode = (mode_->currentIndex() == 1);
+    pr.psd_window = psdWindow_->currentIndex();
+    return pr;
+}
+
+void MainWindow::applyPreset(const radar::Preset& pr) {
+    using radar::WaveformType;
+    const radar::SimulationParams& s = pr.sim;
+    int ti = 2;
+    switch (s.wf.type) {
+        case WaveformType::CW: ti = 0; break;
+        case WaveformType::Pulse: ti = 1; break;
+        case WaveformType::LFM: ti = 2; break;
+        case WaveformType::Barker: ti = 3; break;
+        case WaveformType::Frank: ti = 4; break;
+    }
+    type_->setCurrentIndex(ti);
+    if (const int ci = code_->findData(s.wf.code_length); ci >= 0) code_->setCurrentIndex(ci);
+    fc_->setValue(s.ch.fc / 1e9);
+    fs_->setValue(s.wf.fs / 1e6);
+    pri_->setValue(s.wf.pri * 1e3);
+    tau_->setValue(s.wf.tau * 1e6);
+    bw_->setValue(s.wf.bandwidth / 1e3);
+    range_->setValue(s.ch.range_m / 1e3);
+    dynamics_->setCurrentIndex(s.ch.velocity_mps != 0.0 ? 1 : 0);
+    vel_->setValue(s.ch.velocity_mps);
+    snrMode_->setCurrentIndex(s.ch.snr_mode == radar::SnrMode::Physical ? 1 : 0);
+    snr_->setValue(s.ch.snr_db);
+    pt_->setValue(s.ch.pt_w);
+    gt_->setValue(s.ch.gt_db);
+    gr_->setValue(s.ch.gr_db);
+    rcs_->setValue(s.ch.rcs_m2);
+    loss_->setValue(s.ch.loss_db);
+    nf_->setValue(s.ch.noise_figure_db);
+    noiseProfile_->setCurrentIndex(s.phase_noise_enabled ? 1 : 0);
+    pnFloor_->setValue(s.pn.floor_dbc_hz);
+    pnLeeson_->setValue(s.pn.leeson_corner_hz / 1e3);
+    pnFlicker_->setValue(s.pn.flicker_corner_hz);
+    mfWin_->setCurrentIndex(s.mf_weighting == radar::MfWeighting::Hamming ? 1 : s.mf_weighting == radar::MfWeighting::Hann ? 2 : 0);
+    pfaExp_->setValue(-std::log10(s.cfar.pfa));
+    guard_->setValue(s.cfar.guard_cells);
+    train_->setValue(s.cfar.train_cells);
+    psdWindow_->setCurrentIndex(pr.psd_window);
+    seed_->setValue(static_cast<int>(s.ch.seed & 0x7fffffffULL));
+    adcBits_->setValue(s.rx_imp.adc_bits);
+    adcFs_->setValue(s.rx_imp.adc_fs_sigma);
+    iqGain_->setValue(s.rx_imp.iq_gain_db);
+    iqPhase_->setValue(s.rx_imp.iq_phase_deg);
+    dcI_->setValue(s.rx_imp.dc_i_sigma);
+    dcQ_->setValue(s.rx_imp.dc_q_sigma);
+    for (int i = 0; i < 3; ++i) {
+        const bool on = static_cast<std::size_t>(i) < s.extra_targets.size();
+        tgtOn_[i]->setChecked(on);
+        if (on) {
+            tgtRange_[i]->setValue(s.extra_targets[static_cast<std::size_t>(i)].range_m / 1e3);
+            tgtVel_[i]->setValue(s.extra_targets[static_cast<std::size_t>(i)].velocity_mps);
+            tgtRel_[i]->setValue(s.extra_targets[static_cast<std::size_t>(i)].rel_db);
+        }
+    }
+    cpiPulses_->setValue(pr.cpi.pulses);
+    cpiGate_->setValue(pr.cpi.gate_len);
+    cpiDfft_->setValue(pr.cpi.doppler_fft);
+    slowWin_->setCurrentIndex(pr.cpi.window == radar::SlowWindow::Hann ? 0 : pr.cpi.window == radar::SlowWindow::Hamming ? 1 : 2);
+    cpiPfa_->setValue(-std::log10(pr.cpi.cfar.pfa));
+    cGr_->setValue(pr.cpi.cfar.guard_range);
+    cGd_->setValue(pr.cpi.cfar.guard_doppler);
+    cTr_->setValue(pr.cpi.cfar.train_range);
+    cTd_->setValue(pr.cpi.cfar.train_doppler);
+    mode_->setCurrentIndex(pr.cpi_mode ? 1 : 0);
+    updateForm();
+}
+
+void MainWindow::onSavePreset() {
+    QString path = QFileDialog::getSaveFileName(this, "Save preset", QDir::homePath() + "/radarsim_preset.json", "Preset (*.json)");
+    if (path.isEmpty()) return;
+    if (QFileInfo(path).suffix().isEmpty()) path += ".json";
+    try {
+        radar::save_preset(path.toStdString(), currentPreset());
+        validation_->setStyleSheet("");
+        validation_->setText("Preset saved: " + path);
+    } catch (const std::exception& e) {
+        validation_->setStyleSheet("color: #ff6b6b;");
+        validation_->setText(QString("Could not save the preset: ") + e.what());
+    }
+}
+
+void MainWindow::onLoadPreset() {
+    const QString path = QFileDialog::getOpenFileName(this, "Load preset", QDir::homePath(), "Preset (*.json)");
+    if (path.isEmpty()) return;
+    try {
+        applyPreset(radar::load_preset(path.toStdString()));
+    } catch (const std::exception& e) {
+        validation_->setStyleSheet("color: #ff6b6b;");
+        validation_->setText(QString("Could not load the preset: ") + e.what());
+    }
+}
+
+void MainWindow::onCpiExport() {
+    if (!cpi_ || busy_) return;
+    QString path = QFileDialog::getSaveFileName(this, "Export range-Doppler map", QDir::homePath() + "/radar_cpi.h5", "HDF5 (*.h5)");
+    if (path.isEmpty()) return;
+    if (QFileInfo(path).suffix().isEmpty()) path += ".h5";
+    CpiExportRequest rq;
+    rq.result = cpi_;
+    rq.path = path;
+    busy_ = true;
+    cpiExport_->setEnabled(false);
+    cpiStatus_->setText("Exporting…");
+    emit requestCpiExport(rq);
+}
+
+QWidget* MainWindow::buildMcPage() {
+    mcBack_ = new QPushButton("← Setup");
+    mcStatus_ = new QLabel("Press 'Validate Pd (Monte Carlo)' on the setup page.");
+    mcStatus_->setWordWrap(true);
+    mcPlot_ = new SeriesPlot;
+    mcText_ = new QPlainTextEdit;
+    mcText_->setReadOnly(true);
+    mcText_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    mcText_->setMaximumHeight(280);
+    auto* top = new QHBoxLayout;
+    top->addWidget(mcBack_);
+    top->addWidget(mcStatus_, 1);
+    auto* page = new QWidget;
+    auto* root = new QVBoxLayout(page);
+    root->addLayout(top);
+    root->addWidget(mcPlot_, 3);
+    root->addWidget(mcText_, 2);
+    connect(mcBack_, &QPushButton::clicked, this, [this] { stack_->setCurrentIndex(0); });
+    return page;
+}
+
+void MainWindow::onMonteCarlo() {
+    if (busy_) return;
+    auto fail = [this](const QString& m) { validation_->setStyleSheet("color: #ff6b6b;"); validation_->setText(m); };
+    if (mode_->currentIndex() == 1) { fail("Monte Carlo validation uses the single-pulse range profile: set Processing to 'Single pulse'."); return; }
+    if (!valid_) return;   // the red validation message is already showing
+    radar::SimulationParams p = buildParams();
+    if (p.wf.type == radar::WaveformType::CW) { fail("Monte Carlo validation needs a pulsed waveform."); return; }
+    const std::size_t N = radar::total_samples(p.wf);
+    if (N > 2'000'000) { fail("The GUI limits Monte Carlo to 2M samples per PRI; use radar_mc for larger runs."); return; }
+    McRequest rq;
+    rq.mc.sim = p;
+    rq.mc.sim.extra_targets.clear();          // validation uses the single-target model and an ideal receiver
+    rq.mc.sim.rx_imp = radar::RxImpairments{};
+    rq.mc.pfa = std::clamp(p.cfar.pfa, 1e-9, 0.1);
+    rq.mc.trials = 300;
+    rq.mc.noise_trials = static_cast<int>(std::clamp(std::ceil(2e7 / static_cast<double>(N)), 50.0, 2000.0));
+    rq.mc.threads = 0;
+    const double alb = radar::albersheim_snr_db(0.9, rq.mc.pfa);
+    for (double v = std::floor(alb - 4.0); v <= std::ceil(alb + 4.0) + 1e-9; v += 1.0) rq.snr_out_db.push_back(v);
+    setBusy(true);
+    validation_->setStyleSheet("");
+    validation_->setText("Running Monte Carlo (about 300 trials per SNR point)…");
+    clock_.start();
+    emit requestMc(rq);
+}
+
+void MainWindow::onMcFinished(McResultPtr r) {
+    setBusy(false);
+    const auto& c = r->curve;
+    const auto& f = r->pfa;
+    QString t;
+    t += QString::asprintf("N = %zu samples (%zu active) | matched-filter gain +%.2f dB | design Pfa %.1e\n", r->n, r->n_pulse, r->mf_gain_db, f.pfa_design);
+    t += QString::asprintf("Noise-only false-alarm rate over %zu cells:\n", f.cells);
+    t += QString::asprintf("  fixed threshold : %.3e (%.2fx design)   <- validates the noise scaling\n", f.pfa_fixed, f.pfa_fixed / f.pfa_design);
+    t += QString::asprintf("  CA-CFAR         : %.3e (%.2fx design), effective training cells %.1f\n\n", f.pfa_cfar, f.pfa_cfar / f.pfa_design, f.effective_cells);
+    t += "  SNR_out(dB)  Pd theory  Pd fixed  Pd CA-CFAR\n";
+    for (const auto& pt : c)
+        t += QString::asprintf("  %9.1f    %.3f      %.3f     %.3f\n", pt.snr_out_db, pt.pd_theory, pt.pd_fixed, pt.pd_cfar);
+    t += QString::asprintf("\nPd = 0.9 needs %.2f dB (Marcum-Q) | %.2f dB measured, fixed threshold | %.2f dB measured, CA-CFAR\n",
+                           r->theory_snr90, r->measured_snr90_fixed, r->measured_snr90_cfar);
+    mcText_->setPlainText(t);
+
+    struct Holder { radar::MinMaxPyramid th, fx, cf; };
+    auto h = std::make_shared<Holder>();
+    radar::RBuffer a(c.size()), b(c.size()), d(c.size());
+    for (std::size_t i = 0; i < c.size(); ++i) {
+        a[i] = static_cast<float>(c[i].pd_theory);
+        b[i] = static_cast<float>(c[i].pd_fixed);
+        d[i] = static_cast<float>(c[i].pd_cfar);
+    }
+    h->th = radar::MinMaxPyramid(std::move(a));
+    h->fx = radar::MinMaxPyramid(std::move(b));
+    h->cf = radar::MinMaxPyramid(std::move(d));
+    std::vector<SeriesTrace> tr;
+    tr.push_back({&h->th, QColor(77, 179, 255), 1.0, QStringLiteral("theory (Marcum-Q)")});
+    tr.push_back({&h->fx, QColor(255, 158, 38), 1.0, QStringLiteral("measured, fixed threshold")});
+    tr.push_back({&h->cf, QColor(120, 220, 160), 1.0, QStringLiteral("measured, CA-CFAR")});
+    const double step = c.size() > 1 ? c[1].snr_out_db - c[0].snr_out_db : 1.0;
+    mcPlot_->setSeries(h, std::move(tr), c.front().snr_out_db, step, 1.0, "Matched-filter output SNR (dB)", "Probability of detection");
+    mcStatus_->setText(QString::asprintf("Monte Carlo done in %lld ms | Pd = 0.9 at %.2f dB theory, %.2f dB measured (CA-CFAR)",
+                                         static_cast<long long>(clock_.elapsed()), r->theory_snr90, r->measured_snr90_cfar));
+    updateValidation();
+    stack_->setCurrentIndex(3);
 }

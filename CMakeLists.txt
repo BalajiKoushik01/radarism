@@ -78,7 +78,7 @@ if(RADARSIM_BUILD_GUI)
     gui/SeriesPlot.cpp gui/SeriesPlot.h
     gui/SimWorker.cpp gui/SimWorker.h
     gui/RdPlot.cpp gui/RdPlot.h
-    gui/PlotData.h gui/CpiData.h)
+    gui/PlotData.h gui/CpiData.h gui/McData.h)
   target_include_directories(radarsim_gui PRIVATE gui)
   target_link_libraries(radarsim_gui PRIVATE radar_export Qt6::Widgets Qt6::OpenGLWidgets)
 
