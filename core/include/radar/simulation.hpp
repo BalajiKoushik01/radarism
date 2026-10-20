@@ -7,6 +7,7 @@
 #include "radar/cfar.hpp"
 #include "radar/cfar_neff.hpp"
 #include "radar/channel.hpp"
+#include "radar/impairments.hpp"
 #include "radar/matched_filter.hpp"
 #include "radar/peak_interp.hpp"
 #include "radar/phase_noise.hpp"
@@ -22,6 +23,7 @@ struct SimulationParams {
     CfarParams cfar;
     bool run_detection = true;
     MfWeighting mf_weighting = MfWeighting::None;   // taper on the receive replica
+    RxImpairments rx_imp;                           // receiver impairments (default: ideal)
     bool cfar_correlation_aware = false;            // size the CFAR threshold for correlated (oversampled) noise
 };
 
@@ -38,6 +40,7 @@ struct SimulationResult {
     std::vector<double> detection_range_m;   // from the refined (sub-bin) peak position
     std::vector<double> detection_bin;       // refined peak position in bins
     double cfar_effective_cells = 0.0;       // independent-cell equivalent of the CFAR training window (0 = assumed iid)
+    ImpairmentReport imp;                    // what the receiver impairments did
     double mf_noise_floor_w = 0.0;           // noise floor of mf_power; the echo peak equals Pr
 };
 
@@ -62,6 +65,7 @@ inline const char* waveform_name(WaveformType t) {
 inline std::string validate_all(const SimulationParams& p) {
     if (auto e = validate(p.wf); !e.empty()) return e;
     if (auto e = validate_channel(p.wf, p.ch); !e.empty()) return e;
+    if (auto e = validate_impairments(p.rx_imp); !e.empty()) return e;
     if (p.run_detection && p.wf.type != WaveformType::CW)
         if (auto e = validate_cfar(p.cfar, total_samples(p.wf)); !e.empty()) return e;
     return "";
@@ -92,6 +96,7 @@ inline ResultPtr simulate(const SimulationParams& p, const std::atomic<bool>* ca
     check();
 
     add_awgn(rx, res->report.pn_w, p.ch.seed);
+    res->imp = apply_rx_impairments(rx, p.rx_imp, std::sqrt(res->report.pn_w / 2.0));
     res->rx = std::move(rx);
     check();
 

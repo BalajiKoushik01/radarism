@@ -53,6 +53,7 @@ struct CpiResult {
     RBuffer rd_power;              // [doppler_row * gate_len + gate_bin], fftshifted: row L/2 = zero Doppler
     double rd_noise_floor_w = 0.0; // expected mean noise power per RD cell
     Cfar2dResult cfar;
+    ImpairmentReport imp;
     std::vector<CpiDetection> detections;   // strongest first
 };
 using CpiResultPtr = std::shared_ptr<const CpiResult>;
@@ -107,6 +108,7 @@ inline std::string validate_cpi(const SimulationParams& p, const CpiParams& c) {
     if (G * static_cast<std::size_t>(c.pulses) > 64'000'000 || G * L > 64'000'000)
         return "CPI too large: pulses x gate (or Doppler FFT x gate) exceeds 64M cells.";
     if (auto e = validate_channel(p.wf, p.ch); !e.empty()) return e;
+    if (auto e = validate_impairments(p.rx_imp); !e.empty()) return e;
     const double r_last = p.ch.range_m - p.ch.velocity_mps * static_cast<double>(c.pulses - 1) * p.wf.pri;
     if (!(r_last > 0.0) || r_last > 1e9) return "Target range leaves (0, 1e9] m during the CPI; lower the velocity or the pulse count.";
     if (c.run_detection)
@@ -177,6 +179,10 @@ inline CpiResultPtr simulate_cpi(const SimulationParams& p, const CpiParams& cp,
         const ChannelReport rk = analyze(p.wf, ck);
         CBuffer rx = make_echo(tx, p.wf, ck, rk);
         add_awgn(rx, rk.pn_w, p.ch.seed + mix * (static_cast<std::uint64_t>(k) + 1));
+        {
+            const ImpairmentReport ir = apply_rx_impairments(rx, p.rx_imp, std::sqrt(rk.pn_w / 2.0), k == 0 ? 0.0 : res->imp.full_scale);
+            if (k == 0) res->imp = ir; else res->imp.clipped += ir.clipped;
+        }
         rc.compress(rx, y);
         for (std::size_t g = 0; g < G; ++g) slow[g * M + k] = y[(res->gate_start + g) % N];
         if (progress) progress(static_cast<int>(k + 1), static_cast<int>(M));
