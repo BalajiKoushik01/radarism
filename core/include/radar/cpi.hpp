@@ -109,6 +109,7 @@ inline std::string validate_cpi(const SimulationParams& p, const CpiParams& c) {
         return "CPI too large: pulses x gate (or Doppler FFT x gate) exceeds 64M cells.";
     if (auto e = validate_channel(p.wf, p.ch); !e.empty()) return e;
     if (auto e = validate_impairments(p.rx_imp); !e.empty()) return e;
+    if (auto e = validate_extra_targets(p, static_cast<double>(c.pulses - 1) * p.wf.pri); !e.empty()) return e;
     const double r_last = p.ch.range_m - p.ch.velocity_mps * static_cast<double>(c.pulses - 1) * p.wf.pri;
     if (!(r_last > 0.0) || r_last > 1e9) return "Target range leaves (0, 1e9] m during the CPI; lower the velocity or the pulse count.";
     if (c.run_detection)
@@ -178,6 +179,15 @@ inline CpiResultPtr simulate_cpi(const SimulationParams& p, const CpiParams& cp,
         ck.range_m = p.ch.range_m - p.ch.velocity_mps * static_cast<double>(k) * p.wf.pri;
         const ChannelReport rk = analyze(p.wf, ck);
         CBuffer rx = make_echo(tx, p.wf, ck, rk);
+        for (const TargetSpec& t : p.extra_targets) {
+            ChannelParams ce = p.ch;
+            ce.range_m = t.range_m - t.velocity_mps * static_cast<double>(k) * p.wf.pri;
+            ce.velocity_mps = t.velocity_mps;
+            ChannelReport re = analyze(p.wf, ce);
+            re.pr_w *= db_to_lin(t.rel_db);
+            const CBuffer e = make_echo(tx, p.wf, ce, re);
+            for (std::size_t i = 0; i < N; ++i) rx[i] += e[i];
+        }
         add_awgn(rx, rk.pn_w, p.ch.seed + mix * (static_cast<std::uint64_t>(k) + 1));
         {
             const ImpairmentReport ir = apply_rx_impairments(rx, p.rx_imp, std::sqrt(rk.pn_w / 2.0), k == 0 ? 0.0 : res->imp.full_scale);

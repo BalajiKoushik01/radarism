@@ -11,6 +11,7 @@
 #include "radar/matched_filter.hpp"
 #include "radar/peak_interp.hpp"
 #include "radar/phase_noise.hpp"
+#include "radar/targets.hpp"
 #include "radar/waveforms.hpp"
 
 namespace radar {
@@ -24,6 +25,7 @@ struct SimulationParams {
     bool run_detection = true;
     MfWeighting mf_weighting = MfWeighting::None;   // taper on the receive replica
     RxImpairments rx_imp;                           // receiver impairments (default: ideal)
+    std::vector<TargetSpec> extra_targets;          // additional point targets (up to 8)
     bool cfar_correlation_aware = false;            // size the CFAR threshold for correlated (oversampled) noise
 };
 
@@ -62,13 +64,43 @@ inline const char* waveform_name(WaveformType t) {
 }
 
 // "" if everything is valid, else a UI-ready message
+// Checks the additional targets: each must satisfy the channel limits for as long as it keeps moving (span_s).
+inline std::string validate_extra_targets(const SimulationParams& p, double span_s = 0.0) {
+    if (p.extra_targets.size() > 8) return "At most 8 additional targets are supported.";
+    for (std::size_t i = 0; i < p.extra_targets.size(); ++i) {
+        const TargetSpec& t = p.extra_targets[i];
+        const std::string who = "Target " + std::to_string(i + 2) + ": ";
+        if (!(std::fabs(t.rel_db) <= 100.0)) return who + "relative level must be within +/-100 dB.";
+        ChannelParams ce = p.ch;
+        ce.range_m = t.range_m;
+        ce.velocity_mps = t.velocity_mps;
+        if (auto e = validate_channel(p.wf, ce); !e.empty()) return who + e;
+        const double r_end = t.range_m - t.velocity_mps * span_s;
+        if (!(r_end > 0.0) || r_end > 1e9) return who + "range leaves (0, 1e9] m during the CPI.";
+    }
+    return "";
+}
+
 inline std::string validate_all(const SimulationParams& p) {
     if (auto e = validate(p.wf); !e.empty()) return e;
     if (auto e = validate_channel(p.wf, p.ch); !e.empty()) return e;
     if (auto e = validate_impairments(p.rx_imp); !e.empty()) return e;
+    if (auto e = validate_extra_targets(p); !e.empty()) return e;
     if (p.run_detection && p.wf.type != WaveformType::CW)
         if (auto e = validate_cfar(p.cfar, total_samples(p.wf)); !e.empty()) return e;
     return "";
+}
+
+inline void add_extra_targets(CBuffer& rx, const Waveform& tx, const SimulationParams& p) {
+    for (const TargetSpec& t : p.extra_targets) {
+        ChannelParams ce = p.ch;
+        ce.range_m = t.range_m;
+        ce.velocity_mps = t.velocity_mps;
+        ChannelReport re = analyze(p.wf, ce);
+        re.pr_w *= db_to_lin(t.rel_db);
+        const CBuffer e = make_echo(tx, p.wf, ce, re);
+        for (std::size_t i = 0; i < rx.size(); ++i) rx[i] += e[i];
+    }
 }
 
 inline ResultPtr simulate(const SimulationParams& p, const std::atomic<bool>* cancel = nullptr) {
@@ -92,6 +124,7 @@ inline ResultPtr simulate(const SimulationParams& p, const std::atomic<bool>* ca
     res->report = analyze(p.wf, p.ch);
     res->report.mf_gain_db = lin_to_db(static_cast<double>(tx.n_pulse));
     CBuffer rx = make_echo(tx, p.wf, p.ch, res->report);
+    add_extra_targets(rx, tx, p);
     tx.samples = CBuffer();                     // release the impaired copy
     check();
 
