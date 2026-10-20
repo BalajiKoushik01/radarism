@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include "radar/cpi.hpp"
 #include "radar/simulation.hpp"
 
 namespace radar {
@@ -102,6 +103,62 @@ inline void write_hdf5(const std::string& path, const SimulationResult& r) {
     h5_attr_int(f, "noise_seed", static_cast<long long>(p.ch.seed));
     h5_attr_int(f, "num_samples", static_cast<long long>(r.rx.size()));
     h5_attr_int(f, "num_pulse_samples", static_cast<long long>(r.n_pulse));
+}
+
+inline void h5_write_dataset2d(hid_t loc, const char* name, hid_t type, const void* data, std::size_t rows, std::size_t cols) {
+    hsize_t dims[2] = {static_cast<hsize_t>(rows), static_cast<hsize_t>(cols)};
+    H5Handle space(H5Screate_simple(2, dims, nullptr), H5Sclose, "dataspace");
+    H5Handle ds(H5Dcreate2(loc, name, type, space.get(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT), H5Dclose, name);
+    if (H5Dwrite(ds.get(), type, H5S_ALL, H5S_ALL, H5P_DEFAULT, data) < 0)
+        throw std::runtime_error(std::string("HDF5 error: writing ") + name);
+}
+
+// Range-Doppler map (/rd_power, rows = Doppler fftshifted with row doppler_rows/2 = 0 Hz, columns = range gate bins),
+// CFAR detections (/det_*), and all CPI metadata as attributes.
+inline void write_hdf5_cpi(const std::string& path, const CpiResult& r) {
+    H5Handle file(H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT), H5Fclose, "create file");
+    const hid_t f = file.get();
+    h5_write_dataset2d(f, "rd_power", H5T_NATIVE_FLOAT, r.rd_power.data(), r.doppler_rows, r.gate_len);
+    if (!r.detections.empty()) {
+        std::vector<double> rng, rngr, dop, dopr, vel, velr, snr;
+        for (const auto& d : r.detections) {
+            rng.push_back(d.range_m); rngr.push_back(d.range_refined_m);
+            dop.push_back(d.doppler_hz); dopr.push_back(d.doppler_refined_hz);
+            vel.push_back(d.velocity_mps); velr.push_back(d.velocity_refined_mps);
+            snr.push_back(d.snr_db);
+        }
+        h5_write_dataset(f, "det_range_m", H5T_NATIVE_DOUBLE, rng.data(), rng.size());
+        h5_write_dataset(f, "det_range_refined_m", H5T_NATIVE_DOUBLE, rngr.data(), rngr.size());
+        h5_write_dataset(f, "det_doppler_hz", H5T_NATIVE_DOUBLE, dop.data(), dop.size());
+        h5_write_dataset(f, "det_doppler_refined_hz", H5T_NATIVE_DOUBLE, dopr.data(), dopr.size());
+        h5_write_dataset(f, "det_velocity_mps", H5T_NATIVE_DOUBLE, vel.data(), vel.size());
+        h5_write_dataset(f, "det_velocity_refined_mps", H5T_NATIVE_DOUBLE, velr.data(), velr.size());
+        h5_write_dataset(f, "det_snr_db", H5T_NATIVE_DOUBLE, snr.data(), snr.size());
+    }
+    const auto& p = r.sim;
+    const auto& rep = r.report;
+    h5_attr_str(f, "waveform", waveform_name(p.wf.type));
+    h5_attr_str(f, "units", "rd_power = |x|^2 in watts, normalized so an on-bin target peak equals its single-pulse compressed power");
+    h5_attr_double(f, "sample_rate_hz", p.wf.fs);
+    h5_attr_double(f, "carrier_hz", p.ch.fc);
+    h5_attr_double(f, "pri_s", p.wf.pri);
+    h5_attr_double(f, "prf_hz", rep.prf_hz);
+    h5_attr_int(f, "pulses", r.cpi.pulses);
+    h5_attr_int(f, "gate_start_bin", static_cast<long long>(r.gate_start));
+    h5_attr_int(f, "gate_len", static_cast<long long>(r.gate_len));
+    h5_attr_int(f, "doppler_rows", static_cast<long long>(r.doppler_rows));
+    h5_attr_int(f, "zero_doppler_row", static_cast<long long>(r.doppler_rows / 2));
+    h5_attr_double(f, "doppler_resolution_hz", rep.doppler_resolution_hz);
+    h5_attr_double(f, "velocity_resolution_mps", rep.velocity_resolution_mps);
+    h5_attr_double(f, "v_unambiguous_mps", rep.v_unambiguous_mps);
+    h5_attr_double(f, "rd_noise_floor_w", r.rd_noise_floor_w);
+    h5_attr_double(f, "input_snr_db", r.first_pulse.snr_in_db);
+    h5_attr_double(f, "mf_gain_db", r.first_pulse.mf_gain_db);
+    h5_attr_double(f, "slow_time_gain_db", rep.integration_gain_db);
+    h5_attr_double(f, "target_range_m", p.ch.range_m);
+    h5_attr_double(f, "target_velocity_mps", p.ch.velocity_mps);
+    h5_attr_int(f, "extra_targets", static_cast<long long>(p.extra_targets.size()));
+    h5_attr_int(f, "noise_seed", static_cast<long long>(p.ch.seed));
 }
 
 }  // namespace radar

@@ -41,6 +41,7 @@ struct CpiReport {
 struct CpiDetection {
     std::size_t doppler_bin = 0, gate_bin = 0, range_bin = 0;   // range_bin = (gate_start + gate_bin) % N
     double doppler_hz = 0.0, velocity_mps = 0.0, range_m = 0.0;
+    double range_refined_m = 0.0, doppler_refined_hz = 0.0, velocity_refined_mps = 0.0;   // sub-cell estimates
     double power_w = 0.0, snr_db = 0.0;                         // power relative to the RD noise floor
 };
 
@@ -237,6 +238,15 @@ inline CpiResultPtr simulate_cpi(const SimulationParams& p, const CpiParams& cp,
             cd.range_m = range_from_bin(static_cast<double>(cd.range_bin), fs);
             cd.power_w = static_cast<double>(d.power);
             cd.snr_db = 10.0 * std::log10(cd.power_w / res->rd_noise_floor_w);
+            {
+                auto P = [&](std::size_t rr, std::size_t cc) { return static_cast<double>(res->rd_power[rr * G + cc]); };
+                double dr = 0.0;
+                if (d.col > 0 && d.col + 1 < G) dr = parabolic_offset(P(d.row, d.col - 1), P(d.row, d.col), P(d.row, d.col + 1));
+                const double dd = parabolic_offset(P((d.row + L - 1) % L, d.col), P(d.row, d.col), P((d.row + 1) % L, d.col));
+                cd.range_refined_m = range_from_bin(static_cast<double>(cd.range_bin) + dr, fs);
+                cd.doppler_refined_hz = (static_cast<double>(d.row) + dd - static_cast<double>(L / 2)) * res->report.prf_hz / static_cast<double>(L);
+                cd.velocity_refined_mps = cd.doppler_refined_hz * lambda / 2.0;
+            }
             res->detections.push_back(cd);
         }
     }
