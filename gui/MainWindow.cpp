@@ -224,6 +224,14 @@ QWidget* MainWindow::buildSetupPage() {
 QWidget* MainWindow::buildDashboardPage() {
     back_ = new QPushButton("← Setup");
     status_ = new QLabel("No data yet.");
+    peakInfo_ = new QLabel;
+    peakInfo_->setTextFormat(Qt::RichText);
+    peakInfo_->setWordWrap(true);
+    {
+        QFont pf = peakInfo_->font();
+        pf.setPointSizeF(pf.pointSizeF() + 3.0);
+        peakInfo_->setFont(pf);
+    }
     status_->setWordWrap(true);
     iqSource_ = new QComboBox;
     iqSource_->addItems({"Rx (noisy)", "Tx (ideal)"});
@@ -274,6 +282,7 @@ QWidget* MainWindow::buildDashboardPage() {
     auto* page = new QWidget;
     auto* root = new QVBoxLayout(page);
     root->addLayout(top);
+    root->addWidget(peakInfo_);
     root->addLayout(plots, 1);
 
     connect(back_, &QPushButton::clicked, this, [this] { stack_->setCurrentIndex(0); });
@@ -487,6 +496,7 @@ void MainWindow::onFinished(PlotDataPtr data) {
 
     data_ = std::move(data);
     plot_->setData(data_);
+    updatePeakInfo();
     refreshIq();
     refreshPsd();
     resetPassbandView();
@@ -1105,4 +1115,34 @@ void MainWindow::onMcFinished(McResultPtr r) {
                                          static_cast<long long>(clock_.elapsed()), r->theory_snr90, r->measured_snr90_cfar));
     updateValidation();
     stack_->setCurrentIndex(3);
+}
+
+
+void MainWindow::updatePeakInfo() {
+    if (!data_) { peakInfo_->clear(); return; }
+    const auto& res = *data_->result;
+    if (!res.has_range_profile) {
+        peakInfo_->setText("CW carries no delay information: there is no range profile to detect a peak in.");
+        return;
+    }
+    const auto& pk = data_->peaks;
+    if (pk.empty()) { peakInfo_->setText("Peak detection: no peak found."); return; }
+    const auto& t = pk.front();
+    const double expect = res.report.snr_in_db + res.report.mf_gain_db;
+    QString s = QString("<b>Target range (peak detection): %1 km</b> &nbsp;|&nbsp; bin %2 &nbsp;|&nbsp; %3 dB above the noise floor (expected %4 dB) &nbsp;|&nbsp; ")
+                    .arg(t.range_m / 1e3, 0, 'f', 4).arg(t.bin_refined, 0, 'f', 2).arg(t.snr_db, 0, 'f', 1).arg(expect, 0, 'f', 1);
+    s += t.above_threshold
+             ? QString("<span style='color:#5fd38d'>above the %1 dB detection threshold</span>").arg(data_->peak_threshold_db, 0, 'f', 1)
+             : QString("<span style='color:#ff9e4d'>below the %1 dB detection threshold: not a confident detection</span>").arg(data_->peak_threshold_db, 0, 'f', 1);
+    const double truth = std::fmod(res.report.td_s, res.params.wf.pri) * radar::kSpeedOfLight / 2.0;
+    if (res.params.extra_targets.empty())
+        s += QString("<br>True range %1 km | error %2 m").arg(truth / 1e3, 0, 'f', 4).arg(t.range_m - truth, 0, 'f', 1);
+    else
+        s += QString("<br>Target 1 true range %1 km (this peak may belong to another target)").arg(truth / 1e3, 0, 'f', 4);
+    if (pk.size() > 1) {
+        s += "<br>Other peaks: ";
+        for (std::size_t i = 1; i < pk.size() && i < 5; ++i)
+            s += QString("%1 km (%2 dB)&nbsp;&nbsp;").arg(pk[i].range_m / 1e3, 0, 'f', 3).arg(pk[i].snr_db, 0, 'f', 1);
+    }
+    peakInfo_->setText(s);
 }

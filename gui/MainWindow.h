@@ -70,6 +70,7 @@ private:
     void resetPassbandView();
     void updateExportOptions();
     void updateCuts(int row, int col);
+    void updatePeakInfo();
     void buildExtraControls();
     void fillExtras(radar::SimulationParams& p) const;
     radar::Preset currentPreset() const;
@@ -102,6 +103,7 @@ private:
     QDoubleSpinBox *cpiPfa_ = nullptr, *rdRangeDb_ = nullptr;
     QGroupBox* cpiBox_ = nullptr;
     QLabel *cpiStatus_ = nullptr, *rdInfo_ = nullptr;
+    QLabel* peakInfo_ = nullptr;
     QPushButton* cpiBack_ = nullptr;
     RdPlot* rd_ = nullptr;
     SeriesPlot *rdRangeCut_ = nullptr, *rdDopCut_ = nullptr;

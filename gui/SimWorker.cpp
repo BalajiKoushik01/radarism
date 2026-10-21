@@ -27,6 +27,10 @@ void SimWorker::run(const RunRequest& rq) {
         if (res->has_range_profile) {
             pd->ref = res->mf_noise_floor_w;
             pd->trace = radar::MinMaxPyramid(to_db(res->mf_power, pd->ref));
+            const double pfa = std::clamp(rq.sim.cfar.pfa, 1e-12, 0.5);
+            pd->peak_threshold_db = 10.0 * std::log10(-std::log(pfa));
+            pd->peaks = radar::find_peaks(res->mf_power, res->mf_noise_floor_w, pd->peak_threshold_db,
+                                          radar::suggest_peak_separation(rq.sim.wf), 5, rq.sim.wf.fs);
         }
 
         // Borrowed I/Q views (interleaved complex floats, stride 2)

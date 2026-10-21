@@ -1,6 +1,7 @@
 #include "PlotWidget.h"
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPolygonF>
 #include <QVector4D>
 #include <QWheelEvent>
 #include <algorithm>
@@ -215,6 +216,30 @@ void PlotWidget::paintGL() {
     p.rotate(-90);
     p.drawText(QRectF(-110, -8, 220, 16), Qt::AlignCenter, "dB re matched-filter noise floor");
     p.restore();
+
+    // peak-detection markers (the strongest peak is labelled with its refined range)
+    if (!data_->peaks.empty()) {
+        p.setClipRect(pr);
+        for (std::size_t i = 0; i < data_->peaks.size(); ++i) {
+            const auto& pk = data_->peaks[i];
+            if (pk.bin_refined < x0_ || pk.bin_refined > x1_) continue;
+            const double x = pr.left() + (pk.bin_refined - x0_) / (x1_ - x0_) * pr.width();
+            const double y = pr.bottom() - (pk.snr_db - ylo) / (yhi - ylo) * pr.height();
+            const double sz = (i == 0) ? 7.0 : 5.0;
+            p.setPen(Qt::NoPen);
+            p.setBrush(i == 0 ? QColor(255, 235, 59) : QColor(255, 235, 59, 150));
+            QPolygonF tri;
+            tri << QPointF(x, y - 3.0) << QPointF(x - sz, y - 3.0 - 1.6 * sz) << QPointF(x + sz, y - 3.0 - 1.6 * sz);
+            p.drawPolygon(tri);
+            if (i == 0) {
+                p.setPen(QColor(255, 235, 59));
+                p.drawText(QRectF(x - 80, y - 3.0 - 1.6 * sz - 24, 160, 22), Qt::AlignCenter,
+                           QString::number(pk.range_m / 1e3, 'f', 3) + " km");
+            }
+        }
+        p.setClipping(false);
+        p.setBrush(Qt::NoBrush);
+    }
 
     // legend
     double lx = pr.right() - 4;

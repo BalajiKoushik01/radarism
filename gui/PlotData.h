@@ -3,6 +3,7 @@
 #include <QString>
 #include <memory>
 #include "radar/minmax_pyramid.hpp"
+#include "radar/peak_detect.hpp"
 #include "radar/psd.hpp"
 #include "radar/simulation.hpp"
 
@@ -27,6 +28,8 @@ struct PlotData {
     double ref = 1.0;                   // linear power of the MF noise floor (Pn / E)
     radar::MinMaxPyramid rx_i, rx_q;    // borrowed views into result->rx
     radar::MinMaxPyramid tx_i, tx_q;    // borrowed views into result->tx
+    std::vector<radar::Peak> peaks;     // peak detection on the matched-filter profile, strongest first
+    double peak_threshold_db = 0.0;     // detection threshold used (dB above the noise floor)
     double sigma = 1.0;                 // noise std per I/Q component
     radar::MinMaxPyramid psd_ideal;     // transmit PSD, dB re ideal peak
     radar::MinMaxPyramid psd_impaired;  // same with LO phase noise (empty when disabled)
