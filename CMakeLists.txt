@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(RadarSim VERSION 0.1.0 LANGUAGES CXX)
+project(RadarSim VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -80,6 +80,7 @@ if(RADARSIM_BUILD_GUI)
     gui/RdPlot.cpp gui/RdPlot.h
     gui/PlotData.h gui/CpiData.h gui/McData.h)
   target_include_directories(radarsim_gui PRIVATE gui)
+  target_compile_definitions(radarsim_gui PRIVATE RADARSIM_VERSION="${PROJECT_VERSION}")
   target_link_libraries(radarsim_gui PRIVATE radar_export Qt6::Widgets Qt6::OpenGLWidgets)
 
   add_executable(gl_smoke apps/gl_smoke.cpp)   # GPU / OpenGL diagnostic, not installed

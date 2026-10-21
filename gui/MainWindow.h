@@ -49,6 +49,7 @@ private slots:
     void onLoadPreset();
     void onCpiExport();
     void onMonteCarlo();
+    void onAbout();
     void onMcFinished(McResultPtr r);
 
 private:
@@ -76,6 +77,9 @@ private:
     radar::Preset currentPreset() const;
     void applyPreset(const radar::Preset& pr);
     QWidget* buildMcPage();
+    void addTooltips();
+    void restoreSession();
+    void saveSession() const;
 
     QStackedWidget* stack_ = nullptr;
     QComboBox *type_ = nullptr, *code_ = nullptr, *dynamics_ = nullptr, *snrMode_ = nullptr;

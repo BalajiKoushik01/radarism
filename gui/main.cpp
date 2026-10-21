@@ -14,6 +14,7 @@ int main(int argc, char** argv) {
     QSurfaceFormat::setDefaultFormat(fmt);
 
     QApplication app(argc, argv);
+    app.setApplicationName("RadarSim");
     qRegisterMetaType<radar::SimulationParams>("radar::SimulationParams");
     qRegisterMetaType<PlotDataPtr>("PlotDataPtr");
     qRegisterMetaType<RunRequest>("RunRequest");

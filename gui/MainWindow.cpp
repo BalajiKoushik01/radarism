@@ -1,5 +1,10 @@
 #include "MainWindow.h"
 #include <QCheckBox>
+#include <QKeySequence>
+#include <QMenu>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QStandardPaths>
 #include <QComboBox>
 #include <QFontDatabase>
 #include <QPlainTextEdit>
@@ -29,6 +34,10 @@
 #include "radar/exporters.hpp"
 #include "radar/passband.hpp"
 
+#ifndef RADARSIM_VERSION
+#define RADARSIM_VERSION "dev"
+#endif
+
 namespace {
 QDoubleSpinBox* spin(double lo, double hi, double val, int dec, const QString& suffix) {
     auto* s = new QDoubleSpinBox;
@@ -49,7 +58,7 @@ QSpinBox* ispin(int lo, int hi, int val) {
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-    setWindowTitle("RadarSim");
+    setWindowTitle(QString("RadarSim %1").arg(RADARSIM_VERSION));
     stack_ = new QStackedWidget;
     stack_->addWidget(buildSetupPage());
     stack_->addWidget(buildDashboardPage());
@@ -75,10 +84,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(this, &MainWindow::requestCpiExport, worker_, &SimWorker::exportCpi);
     thread_->start();
 
+    menuBar()->addMenu("&Help")->addAction("About RadarSim", this, &MainWindow::onAbout);
+    addTooltips();
+    restoreSession();
     updateForm();
 }
 
 MainWindow::~MainWindow() {
+    saveSession();
     worker_->cancel();
     thread_->quit();
     thread_->wait();
@@ -182,6 +195,8 @@ QWidget* MainWindow::buildSetupPage() {
     info_ = new QLabel;
     info_->setWordWrap(true);
     generate_ = new QPushButton("GENERATE");
+    generate_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Return")));
+    generate_->setToolTip("Run the simulation (Ctrl+Enter)");
     generate_->setMinimumHeight(40);
     QFont gf = generate_->font();
     gf.setBold(true);
@@ -1145,4 +1160,60 @@ void MainWindow::updatePeakInfo() {
             s += QString("%1 km (%2 dB)&nbsp;&nbsp;").arg(pk[i].range_m / 1e3, 0, 'f', 3).arg(pk[i].snr_db, 0, 'f', 1);
     }
     peakInfo_->setText(s);
+}
+
+
+void MainWindow::addTooltips() {
+    mode_->setToolTip("Single pulse: range profile. CPI: many pulses, range-Doppler map with velocity.");
+    type_->setToolTip("CW has no range information. LFM, pulse and phase codes give a matched-filter range profile.");
+    fs_->setToolTip("Complex baseband sampling rate. Range bins are c/(2 Fs); LFM needs Fs of at least 1.2 x bandwidth.");
+    pri_->setToolTip("Pulse repetition interval. Unambiguous range is c*PRI/2; unambiguous velocity (CPI) is lambda*PRF/4.");
+    tau_->setToolTip("Pulse width. The blind range is c*tau/2: echoes inside it overlap the transmit pulse.");
+    bw_->setToolTip("LFM sweep bandwidth. Range resolution is about c/(2B) after compression.");
+    snrMode_->setToolTip("Manual: you set the per-sample input SNR. Physical: it follows from the radar equation.");
+    snr_->setToolTip("Per-sample input SNR. The matched filter adds 10*log10(pulse samples) dB (less for a tapered replica).");
+    noiseProfile_->setToolTip("Tx phase noise (Leeson) multiplies the transmit pulse; it is not available in CPI mode.");
+    mfWin_->setToolTip("A taper on the receive replica lowers range sidelobes and costs about 1.3 dB (Hamming) or 1.8 dB (Hann).");
+    pfaExp_->setToolTip("Design false-alarm probability. The CFAR threshold is sized for the correlated matched-filter noise.");
+    guard_->setToolTip("Cells next to the cell under test that are left out of the noise estimate (use at least the pulse width in bins).");
+    train_->setToolTip("Cells on each side used to estimate the local noise floor.");
+    cpiPulses_->setToolTip("Pulses in the coherent interval. Velocity resolution is lambda*PRF/(2*pulses).");
+    cpiGate_->setToolTip("Range bins kept per pulse around the target (keeps memory small).");
+    cpiDfft_->setToolTip("Doppler FFT length; 'auto' is the next power of two at or above the pulse count.");
+    seed_->setToolTip("Seed of the noise generator: the same seed reproduces the same run.");
+    adcBits_->setToolTip("ADC resolution; 'off' is an ideal converter.");
+    adcFs_->setToolTip("ADC full scale in noise sigmas per I/Q component; 'auto' avoids clipping.");
+    iqGain_->setToolTip("Gain error of the Q branch relative to I; creates a mirror image of every signal.");
+    iqPhase_->setToolTip("Phase error of the Q branch; creates a mirror image of every signal.");
+    dcI_->setToolTip("DC offset on I in noise sigmas.");
+    dcQ_->setToolTip("DC offset on Q in noise sigmas.");
+    mcBtn_->setToolTip("Runs hundreds of simulations per SNR point and compares the measured Pd with the Marcum-Q theory.");
+}
+
+void MainWindow::saveSession() const {
+    try {
+        const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+        if (dir.isEmpty()) return;
+        QDir().mkpath(dir);
+        radar::save_preset((dir + "/last_session.json").toStdString(), currentPreset());
+    } catch (...) {
+    }
+}
+
+void MainWindow::restoreSession() {
+    const QString file = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/last_session.json";
+    if (!QFileInfo::exists(file)) return;
+    try {
+        applyPreset(radar::load_preset(file.toStdString()));
+    } catch (...) {
+    }
+}
+
+void MainWindow::onAbout() {
+    QMessageBox::about(this, "About RadarSim",
+        QString("<b>RadarSim %1</b><br>Baseband radar signal generation, propagation and DSP simulator.<br><br>"
+                "Single-pulse and CPI (range-Doppler) modes, matched filter with peak detection and CA-CFAR, receiver "
+                "impairments, AWG/SDR export, Monte Carlo validation.<br><br>"
+                "<b>Shortcuts</b>: Ctrl+Enter generates; on every plot the wheel zooms, drag pans, double-click resets.<br>"
+                "<b>Command-line tools</b>: radar_cli, radar_cpi, radar_mc, radar_awg, radar_bench.").arg(RADARSIM_VERSION));
 }
