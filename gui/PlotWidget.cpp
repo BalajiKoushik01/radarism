@@ -8,7 +8,7 @@
 #include <cmath>
 
 namespace {
-constexpr int kLeft = 62, kRight = 14, kTop = 14, kBottom = 38;
+constexpr int kLeft = 96, kRight = 18, kTop = 16, kBottom = 64;
 
 std::vector<double> niceTicks(double lo, double hi, int target) {
     std::vector<double> t;
@@ -191,7 +191,7 @@ void PlotWidget::paintGL() {
     QPainter p(this);
     p.setRenderHint(QPainter::TextAntialiasing);
     QFont f = p.font();
-    f.setPointSizeF(8.5);
+    f.setPointSizeF(10.5);
     p.setFont(f);
     p.setPen(QColor(150, 155, 165));
     p.drawRect(pr);
@@ -204,18 +204,25 @@ void PlotWidget::paintGL() {
     const double span = x1_ - x0_;
     for (double km : niceTicks(x0_ / bins_per_km, x1_ / bins_per_km, 8)) {
         const double px = pr.left() + (km * bins_per_km - x0_) / span * pr.width();
-        p.drawText(QRectF(px - 32, pr.bottom() + 3, 64, 16), Qt::AlignCenter, QString::number(km, 'g', 6));
+        p.drawText(QRectF(px - 40, pr.bottom() + 5, 80, 20), Qt::AlignCenter, QString::number(km, 'g', 6));
     }
     for (double db : niceTicks(ylo, yhi, 6)) {
         const double py = pr.bottom() - (db - ylo) / (yhi - ylo) * pr.height();
-        p.drawText(QRectF(24, py - 8, kLeft - 28, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(db, 'g', 4));
+        p.drawText(QRectF(30, py - 10, kLeft - 36, 20), Qt::AlignRight | Qt::AlignVCenter, QString::number(db, 'g', 4));
     }
-    p.drawText(QRectF(pr.left(), height() - 18, pr.width(), 16), Qt::AlignCenter, "Range (km)");
-    p.save();
-    p.translate(10, pr.center().y());
-    p.rotate(-90);
-    p.drawText(QRectF(-110, -8, 220, 16), Qt::AlignCenter, "dB re matched-filter noise floor");
-    p.restore();
+    {
+        QFont tf = p.font();
+        tf.setPointSizeF(11.5);
+        tf.setBold(true);
+        p.setFont(tf);
+        p.drawText(QRectF(pr.left(), height() - 26, pr.width(), 24), Qt::AlignCenter, "Range (km)");
+        p.save();
+        p.translate(15, pr.center().y());
+        p.rotate(-90);
+        p.drawText(QRectF(-170, -12, 340, 24), Qt::AlignCenter, "dB re matched-filter noise floor");
+        p.restore();
+        p.setFont(f);
+    }
 
     // peak-detection markers (the strongest peak is labelled with its refined range)
     if (!data_->peaks.empty()) {
@@ -250,7 +257,7 @@ void PlotWidget::paintGL() {
         const int w = p.fontMetrics().horizontalAdvance(it.text) + 14;
         lx -= w;
         p.setPen(it.c);
-        p.drawText(QRectF(lx, pr.top() + 3, w, 14), Qt::AlignRight | Qt::AlignVCenter, it.text);
+        p.drawText(QRectF(lx, pr.top() + 3, w, 20), Qt::AlignRight | Qt::AlignVCenter, it.text);
     }
 }
 

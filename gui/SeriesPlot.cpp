@@ -11,7 +11,7 @@
 #include <limits>
 
 namespace {
-constexpr int kLeft = 66, kRight = 16, kTop = 14, kBottom = 40;
+constexpr int kLeft = 96, kRight = 18, kTop = 16, kBottom = 64;
 const QColor kBg(11, 14, 20);
 const QColor kGridMajor(58, 66, 80);
 const QColor kGridMinor(28, 33, 42);
@@ -246,7 +246,7 @@ void SeriesPlot::paintGL() {
     QPainter p(this);
     p.setRenderHint(QPainter::TextAntialiasing);
     QFont f = p.font();
-    f.setPointSizeF(8.5);
+    f.setPointSizeF(10.5);
     p.setFont(f);
     p.setPen(kFrame);
     p.drawRect(pr);
@@ -262,15 +262,22 @@ void SeriesPlot::paintGL() {
 
     p.setPen(kText);
     for (double xv : multiples(viewXMin_, viewXMax_, niceStep(span, 8), false))
-        p.drawText(QRectF(px(xv) - 36, pr.bottom() + 4, 72, 16), Qt::AlignCenter, QString::number(xv, 'g', 7));
+        p.drawText(QRectF(px(xv) - 40, pr.bottom() + 5, 80, 20), Qt::AlignCenter, QString::number(xv, 'g', 7));
     for (double yv : multiples(lastYlo_, lastYhi_, niceStep(lastYhi_ - lastYlo_, 6), false))
-        p.drawText(QRectF(2, py(yv) - 8, kLeft - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(yv, 'g', 4));
-    p.drawText(QRectF(pr.left(), height() - 18, pr.width(), 16), Qt::AlignCenter, xLabel_);
-    p.save();
-    p.translate(11, pr.center().y());
-    p.rotate(-90);
-    p.drawText(QRectF(-120, -8, 240, 16), Qt::AlignCenter, yLabel_);
-    p.restore();
+        p.drawText(QRectF(2, py(yv) - 10, kLeft - 8, 20), Qt::AlignRight | Qt::AlignVCenter, QString::number(yv, 'g', 4));
+    {
+        QFont tf = p.font();
+        tf.setPointSizeF(11.5);
+        tf.setBold(true);
+        p.setFont(tf);
+        p.drawText(QRectF(pr.left(), height() - 26, pr.width(), 24), Qt::AlignCenter, xLabel_);
+        p.save();
+        p.translate(15, pr.center().y());
+        p.rotate(-90);
+        p.drawText(QRectF(-170, -12, 340, 24), Qt::AlignCenter, yLabel_);
+        p.restore();
+        p.setFont(f);
+    }
 
     // Sample markers when each sample is several pixels wide (exact sample positions)
     const double pxPerSample = pr.width() / (span / (dx_ * xScale_));
@@ -301,7 +308,7 @@ void SeriesPlot::paintGL() {
         QColor col = it->color;
         col.setAlpha(255);
         p.setPen(col);
-        p.drawText(QRectF(lx, pr.top() + 3, w, 14), Qt::AlignRight | Qt::AlignVCenter, it->name);
+        p.drawText(QRectF(lx, pr.top() + 3, w, 20), Qt::AlignRight | Qt::AlignVCenter, it->name);
     }
 
     // Crosshair with live readout: cursor x/y plus each trace's value at the nearest sample
