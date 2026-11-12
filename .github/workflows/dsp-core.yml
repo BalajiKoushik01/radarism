@@ -12,7 +12,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libfftw3-dev libvolk2-dev libhdf5-dev libgtest-dev
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libfftw3-dev libvolk-dev libhdf5-dev libgtest-dev
       - name: Configure headless DSP build
         run: cmake -S . -B build -G Ninja -DRADARSIM_BUILD_GUI=OFF -DRADARSIM_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build DSP tools and tests
