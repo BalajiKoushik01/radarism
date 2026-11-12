@@ -1,0 +1,21 @@
+name: Radar DSP core build and tests
+on:
+  pull_request:
+  push:
+    branches: ["ci/**", "main"]
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config libfftw3-dev libvolk2-dev libhdf5-dev libgtest-dev
+      - name: Configure headless DSP build
+        run: cmake -S . -B build -G Ninja -DRADARSIM_BUILD_GUI=OFF -DRADARSIM_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build DSP tools and tests
+        run: cmake --build build --parallel 2
+      - name: Run all CTest checks
+        run: ctest --test-dir build --output-on-failure --parallel 2
