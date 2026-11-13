@@ -50,20 +50,20 @@ inline const std::vector<int>& barker_code(int len) {
 
 // Returns "" if parameters are valid, otherwise a human-readable error (shown in the UI later).
 inline std::string validate(const WaveformParams& p) {
-    if (!(p.fs > 0.0)) return "Sampling rate must be > 0.";
-    if (!(p.pri > 0.0)) return "PRI must be > 0.";
+    if (!std::isfinite(p.fs) || !(p.fs > 0.0)) return "Sampling rate must be finite and > 0.";
+    if (!std::isfinite(p.pri) || !(p.pri > 0.0)) return "PRI must be finite and > 0.";
     const double n_total = std::round(p.pri * p.fs);
     if (n_total < 2.0) return "PRI * Fs gives fewer than 2 samples.";
     if (n_total > static_cast<double>(kMaxSamples)) return "PRI * Fs exceeds the 100M-sample limit.";
     if (p.type == WaveformType::CW) return "";
 
-    if (!(p.tau > 0.0)) return "Pulse width must be > 0.";
+    if (!std::isfinite(p.tau) || !(p.tau > 0.0)) return "Pulse width must be finite and > 0.";
     if (p.tau > p.pri) return "Pulse width cannot exceed PRI.";
     if (std::round(p.tau * p.fs) < 2.0) return "Pulse is shorter than 2 samples; raise Fs or tau.";
 
     switch (p.type) {
         case WaveformType::LFM:
-            if (!(p.bandwidth > 0.0)) return "LFM needs sweep bandwidth > 0.";
+            if (!std::isfinite(p.bandwidth) || !(p.bandwidth > 0.0)) return "LFM needs finite sweep bandwidth > 0.";
             if (p.fs < 1.2 * p.bandwidth) return "Fs must be at least 1.2 x sweep bandwidth.";
             break;
         case WaveformType::Barker:

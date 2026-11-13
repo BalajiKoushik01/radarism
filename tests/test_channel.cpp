@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <numbers>
+#include <limits>
 #include "radar/channel.hpp"
 #include "radar/waveforms.hpp"
 
@@ -157,4 +158,24 @@ TEST(Channel, ValidationCatchesBadInputs) {
     c.range_m = 10e3; c.velocity_mps = 1e5;   // fd ~ 6.7 MHz > 0.45 Fs
     EXPECT_FALSE(validate_channel(wp, c).empty());
     EXPECT_THROW(simulate_rx(generate(wp), wp, c), std::invalid_argument);
+}
+
+TEST(Channel, RejectsNonFinitePhysicalInputs) {
+    auto wp = wpar();
+    ChannelParams c;
+    c.fc = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(validate_channel(wp, c).empty());
+    c.fc = 10e9;
+    c.velocity_mps = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_FALSE(validate_channel(wp, c).empty());
+    c.velocity_mps = 0.0;
+    c.noise_figure_db = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(validate_channel(wp, c).empty());
+    c.noise_figure_db = 3.0;
+    c.range_m = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_FALSE(validate_channel(wp, c).empty());
+    c.range_m = 1e4;
+    c.snr_mode = SnrMode::Physical;
+    c.rcs_m2 = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(validate_channel(wp, c).empty());
 }
