@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include <cmath>
 #include <numbers>
 #include "radar/waveforms.hpp"
@@ -95,4 +96,20 @@ TEST(Validation, AcceptsGoodInputs) {
     auto p = base();
     p.type = WaveformType::Barker; p.code_length = 13; p.tau = 13e-6;
     EXPECT_TRUE(validate(p).empty());
+}
+
+TEST(Waveform, RejectsNonFiniteInputs) {
+    WaveformParams p;
+    p.fs = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(validate(p).empty());
+    p.fs = 1e6;
+    p.pri = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_FALSE(validate(p).empty());
+    p.pri = 1e-3;
+    p.tau = std::numeric_limits<double>::infinity();
+    EXPECT_FALSE(validate(p).empty());
+    p.tau = 1e-4;
+    p.type = WaveformType::LFM;
+    p.bandwidth = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_FALSE(validate(p).empty());
 }

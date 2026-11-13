@@ -65,11 +65,16 @@ inline double radar_equation_power(const ChannelParams& c) {
 
 // "" if valid, else a UI-ready message
 inline std::string validate_channel(const WaveformParams& wp, const ChannelParams& c) {
-    if (!(c.fc > 0.0)) return "Carrier frequency must be > 0.";
-    if (!(c.range_m > 0.0) || c.range_m > 1e9) return "Target range must be in (0, 1e9] m.";
+    if (!std::isfinite(c.fc) || !(c.fc > 0.0)) return "Carrier frequency must be finite and > 0.";
+    if (!std::isfinite(c.range_m) || !(c.range_m > 0.0) || c.range_m > 1e9) return "Target range must be finite and in (0, 1e9] m.";
+    if (!std::isfinite(c.velocity_mps)) return "Radial velocity must be finite.";
+    if (!std::isfinite(c.noise_figure_db) || !std::isfinite(c.loss_db) ||
+        !std::isfinite(c.gt_db) || !std::isfinite(c.gr_db) ||
+        !std::isfinite(c.snr_db)) return "SNR, loss, gains and noise figure must be finite.";
     if (c.delay_half_taps < 4 || c.delay_half_taps > 64) return "Delay filter half-taps must be 4..64.";
     if (c.snr_mode == SnrMode::Physical) {
-        if (!(c.pt_w > 0.0) || !(c.rcs_m2 > 0.0)) return "Pt and RCS must be > 0.";
+        if (!std::isfinite(c.pt_w) || !std::isfinite(c.rcs_m2) ||
+            !(c.pt_w > 0.0) || !(c.rcs_m2 > 0.0)) return "Pt and RCS must be finite and > 0.";
     }
     const double fd = 2.0 * c.velocity_mps * c.fc / kSpeedOfLight;
     const double occupied = (wp.type == WaveformType::LFM) ? 0.5 * wp.bandwidth : 0.0;
